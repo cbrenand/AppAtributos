@@ -1,0 +1,112 @@
+# -*- coding: utf-8 -*-
+from flask import Flask, jsonify, request
+import requests
+from config import TINY_API_KEY, SQLALCHEMY_DATABASE_URI
+from database import db  # Importe o db de database.py
+from models.product import Produto  # Agora pode importar Produto sem erro de circularidade
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)  # Inicializa o banco de dados com o app Flask
+
+# Importar o modelo após a inicialização do app e do db
+from models.product import Produto
+
+# Criar a tabela se ela não existir
+with app.app_context():
+    db.create_all()
+
+# Modelo do Produto
+class Produto(db.Model):
+    __tablename__ = 'produtos'
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), unique=True, nullable=False)
+    nome = db.Column(db.String(100), nullable=False)
+    preco = db.Column(db.Float, nullable=True)
+    estoque = db.Column(db.Integer, nullable=True)
+
+    def __repr__(self):
+        return f'<Produto {self.nome}>'
+
+# Rota inicial
+@app.route('/')
+def home():
+    return "Aplicativo rodando com sucesso!"
+
+# Rota para consultar produto pelo SKU usando o Tiny
+@app.route('/consultar_produto_sku/<sku>')
+def consultar_produto_sku(sku):
+    url = "https://api.tiny.com.br/api2/produtos.pesquisa"
+    params = {
+        "token": TINY_API_KEY,
+        "formato": "json",
+        "pesquisa": sku
+    }
+    response = requests.get(url, params=params)
+    data = response.json()
+
+    # Verifica se o produto foi encontrado na API do Tiny
+    if "retorno" in data and "produtos" in data["retorno"]:
+        produto = data["retorno"]["produtos"][0]["produto"]
+        return jsonify(produto)
+    else:
+        return jsonify({"error": "Produto não encontrado"}), 404
+
+# Rota para salvar produto no banco de dados local
+@app.route('/salvar_produto', methods=['POST'])
+def salvar_produto():
+    dados = request.json
+    novo_produto = Produto(
+        sku=dados.get("sku"),
+        nome=dados.get("nome"),
+        preco=dados.get("preco"),
+        estoque=dados.get("estoque")
+    )
+    db.session.add(novo_produto)
+    db.session.commit()
+    return jsonify({"message": "Produto salvo com sucesso!"}), 201
+
+# Rota para consultar produto no banco de dados local pelo SKU
+@app.route('/produto_local/<sku>')
+def produto_local(sku):
+    produto = Produto.query.filter_by(sku=sku).first()
+    if produto:
+        return jsonify({
+            "sku": produto.sku,
+            "nome": produto.nome,
+            "preco": produto.preco,
+            "estoque": produto.estoque
+        })
+    else:
+        return jsonify({"error": "Produto não encontrado"}), 404
+
+if __name__ == '__main__':
+    # Cria as tabelas do banco de dados
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
+@app.route('/salvar_produto', methods=['POST'])
+def salvar_produto():
+    dados = request.json
+    novo_produto = Produto(
+        sku=dados.get("sku"),
+        nome=dados.get("nome"),
+        preco=dados.get("preco"),
+        estoque=dados.get("estoque")
+    )
+    db.session.add(novo_produto)
+    db.session.commit()
+    return jsonify({"message": "Produto salvo com sucesso!"}), 201
+@app.route('/produto_local/<sku>')
+def produto_local(sku):
+    produto = Produto.query.filter_by(sku=sku).first()
+    if produto:
+        return jsonify({
+            "sku": produto.sku,
+            "nome": produto.nome,
+            "preco": produto.preco,
+            "estoque": produto.estoque
+        })
+    else:
+        return jsonify({"error": "Produto não encontrado"}), 404

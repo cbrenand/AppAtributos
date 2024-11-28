@@ -1,0 +1,55 @@
+import requests
+from config import TINY_API_KEY
+
+BASE_URL = "https://api.tiny.com.br/api2"
+
+def buscar_produtos(pagina=1):
+    """
+    Busca produtos cadastrados no Tiny, página por página.
+    """
+    url = f"{BASE_URL}/produtos.pesquisa"
+    params = {
+        "token": TINY_API_KEY,
+        "formato": "json",
+        "pagina": pagina
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        if "retorno" in data and "produtos" in data["retorno"]:
+            return data["retorno"]["produtos"]
+    return []
+
+def buscar_detalhes_produto(sku):
+    """
+    Busca os detalhes de um produto específico no Tiny pelo SKU.
+    """
+    url = f"{BASE_URL}/produto.obter"
+    params = {
+        "token": TINY_API_KEY,
+        "formato": "json",
+        "sku": sku
+    }
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        if "retorno" in data and "produto" in data["retorno"]:
+            return data["retorno"]["produto"]
+    return None
+
+def criar_atributo_personalizado(nome, tipo="texto", valores=None):
+    """
+    Cria um atributo personalizado no Tiny.
+    """
+    url = f"{BASE_URL}/atributos.incluir"
+    data = {
+        "token": TINY_API_KEY,
+        "formato": "json",
+        "atributo": {
+            "nome": nome,
+            "tipo": tipo,
+            "valores": valores or []
+        }
+    }
+    response = requests.post(url, json=data)
+    return response.json()

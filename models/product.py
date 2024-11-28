@@ -1,0 +1,14 @@
+from database import db
+
+class Produto(db.Model):
+    __tablename__ = 'produtos'
+    __table_args__ = {'extend_existing': True}  # Permite redefinir a tabela
+
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), unique=True, nullable=False)
+    nome = db.Column(db.String(100), nullable=False)
+    preco = db.Column(db.Float, nullable=True)
+    estoque = db.Column(db.Integer, nullable=True)
+
+    def __repr__(self):
+        return f'<Produto {self.nome}>'
