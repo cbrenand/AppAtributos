@@ -1,8 +1,5 @@
 Flask==2.3.3
-<<<<<<< HEAD
 flask_sqlalchemy==2.5.1
-=======
->>>>>>> 7f90195ed873afdacb0ac2fa3fcb2d70075cb6bb
 attrs==24.2.0
 cachetools==5.5.0
 certifi==2024.8.30
