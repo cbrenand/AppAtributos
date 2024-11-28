@@ -138,4 +138,4 @@ def produtos_pendentes_marketplaces():
         return jsonify({"message": "Nenhum produto com pendências encontrado"}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
