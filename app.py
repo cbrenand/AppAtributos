@@ -25,9 +25,9 @@ with app.app_context():
     db.create_all()
 
 # Rota inicial
-@app.route('/')
-def home():
-    return "Aplicativo rodando com sucesso!"
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({"status": "healthy"}), 200
 
 # Rota para consultar produtos no Tiny
 @app.route('/tiny/produtos', methods=['GET'])  # type: ignore
