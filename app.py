@@ -1,141 +1,87 @@
-# -*- coding: utf-8 -*-
-from flask import Flask, jsonify, request
+import os
 import requests
-from config import TINY_API_KEY, SQLALCHEMY_DATABASE_URI  # type: ignore
-from database import db
-from models.product import Produto  # Importa o modelo Produto sem redefini-lo
-import pandas as pd
-from celery import Celery  # type: ignore
-from services.tiny import buscar_produtos, buscar_detalhes_produto, criar_atributo_personalizado
+from flask import Flask, request, jsonify, redirect
+from dotenv import load_dotenv
 
-# Inicializa o App Flask
+load_dotenv()
+
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = SQLALCHEMY_DATABASE_URI
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
 
-# Configuração do Celery (usando Redis como backend)
-app.config['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
-app.config['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
-celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
-celery.conf.update(app.config)
+# Configurações do Tiny
+TINY_CLIENT_ID = os.getenv("tiny-api-d4c818007ad48771afe75f79652f7c2bf3268447-1733157799")
+TINY_CLIENT_SECRET = os.getenv("zECJh5uKoOilY0IMkaPy1qiMD3AWaUYq")
+TINY_REDIRECT_URI = os.getenv("http://127.0.0.1:5000/callback")
+TINY_API_TOKEN = os.getenv("e94b48205ec0e02e25eb855a32564acc08045cf4bda3f12da1d19a0329bc0f05")
+TINY_AUTH_URL = "https://api.tiny.com.br/oauth/authorize"
+TINY_TOKEN_URL = "https://api.tiny.com.br/oauth/token"
 
-# Criação da tabela dentro do contexto da aplicação
-with app.app_context():
-    db.create_all()
+# Configurações do Mercado Livre
+ML_CLIENT_ID = os.getenv("3970896740233001")
+ML_CLIENT_SECRET = os.getenv("pXS7hT8dJ3B4ApIcT6p1BzhTBxKluQ9u")
+ML_REDIRECT_URI = os.getenv("http://127.0.0.1:5000/ml/callback")
+ML_AUTH_URL = "https://appatributos.onrender.com/auth"
+ML_TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
 
-# Rota inicial
-@app.route("/healthz", methods=["GET"])
-def healthz():
-    return jsonify({"status": "healthy"}), 200
+# Variável para armazenar tokens
+tokens = {}
 
-# Rota para consultar produtos no Tiny
-@app.route('/tiny/produtos', methods=['GET'])  # type: ignore
-def consultar_produtos_tiny():
-    """
-    Consulta todos os produtos cadastrados no Tiny, página por página.
-    """
-    pagina = request.args.get("pagina", 1, type=int)
-    produtos = buscar_produtos(pagina)
-    if produtos:
-        return jsonify(produtos)
-    return jsonify({"error": "Nenhum produto encontrado"}), 404
+@app.route("/")
+def home():
+    return "Bem-vindo ao AppAtributos! Acesse /auth para autenticar no Tiny ou /ml/auth para autenticar no Mercado Livre."
 
-# Rota para consultar detalhes de um produto específico no Tiny
-@app.route('/tiny/produto/<sku>', methods=['GET'])  # type: ignore
-def consultar_detalhes_produto_tiny(sku):
-    """
-    Consulta os detalhes de um produto específico no Tiny pelo SKU.
-    """
-    produto = buscar_detalhes_produto(sku)
-    if produto:
-        return jsonify(produto)
-    return jsonify({"error": "Produto não encontrado"}), 404
+# Fluxo de autenticação do Tiny
+@app.route("/auth")
+def auth_tiny():
+    return redirect(f"{TINY_AUTH_URL}?response_type=code&client_id={TINY_CLIENT_ID}&redirect_uri={TINY_REDIRECT_URI}")
 
-# Rota para criar um atributo personalizado no Tiny
-@app.route('/tiny/atributo', methods=['POST'])  # type: ignore
-def criar_atributo_tiny():
-    """
-    Cria um atributo personalizado no Tiny.
-    """
-    dados = request.json
-    nome = dados.get("nome")
-    tipo = dados.get("tipo", "texto")
-    valores = dados.get("valores", [])
-    resultado = criar_atributo_personalizado(nome, tipo, valores)
-    if "retorno" in resultado and "status" in resultado["retorno"] and resultado["retorno"]["status"] == "OK":
-        return jsonify({"message": "Atributo criado com sucesso!"}), 201
-    return jsonify({"error": "Erro ao criar atributo"}), 400
+@app.route("/callback")
+def callback_tiny():
+    code = request.args.get("code")
+    response = requests.post(TINY_TOKEN_URL, data={
+        "grant_type": "authorization_code",
+        "client_id": TINY_CLIENT_ID,
+        "client_secret": TINY_CLIENT_SECRET,
+        "code": code,
+        "redirect_uri": TINY_REDIRECT_URI
+    })
+    tokens["tiny"] = response.json().get("access_token")
+    return "Autenticação do Tiny concluída!"
 
-# Rota para consultar produto pelo SKU usando o Tiny
-@app.route('/consultar_produto_sku/<sku>')
-def consultar_produto_sku(sku):
-    url = "https://api.tiny.com.br/api2/produtos.pesquisa"
-    params = {
-        "token": TINY_API_KEY,
-        "formato": "json",
-        "pesquisa": sku
-    }
-    response = requests.get(url, params=params)
-    data = response.json()
+# Fluxo de autenticação do Mercado Livre
+@app.route("/ml/auth")
+def auth_ml():
+    return redirect(f"{ML_AUTH_URL}?response_type=code&client_id={ML_CLIENT_ID}&redirect_uri={ML_REDIRECT_URI}")
 
-    if "retorno" in data and "produtos" in data["retorno"]:
-        produto = data["retorno"]["produtos"][0]["produto"]
-        return jsonify(produto)
-    else:
-        return jsonify({"error": "Produto não encontrado"}), 404
+@app.route("/ml/callback")
+def callback_ml():
+    code = request.args.get("code")
+    response = requests.post(ML_TOKEN_URL, data={
+        "grant_type": "authorization_code",
+        "client_id": ML_CLIENT_ID,
+        "client_secret": ML_CLIENT_SECRET,
+        "code": code,
+        "redirect_uri": ML_REDIRECT_URI
+    })
+    tokens["ml"] = response.json().get("access_token")
+    return "Autenticação do Mercado Livre concluída!"
 
-# Função para enviar todos os dados do produto para o Tiny
-def atualizar_produto_no_tiny(produto):
-    url = "https://api.tiny.com.br/api2/produto.alterar"
-    data = {
-        "token": TINY_API_KEY,
-        "formato": "json",
-        "produto": produto
-    }
-    response = requests.post(url, json=data)
-    return response.json()
+# Exemplo de endpoint para buscar produtos do Tiny
+@app.route("/produtos/<sku>", methods=["GET"])
+def buscar_produto_tiny(sku):
+    if "tiny" not in tokens:
+        return "Erro: Não autenticado no Tiny. Por favor, autentique-se em /auth.", 401
+    headers = {"Authorization": f"Bearer {tokens['tiny']}"}
+    response = requests.get(f"https://api.tiny.com.br/produto/{sku}", headers=headers)
+    return jsonify(response.json())
 
-# Função para processar produtos em lotes
-@celery.task
-def processar_lote_produtos(produtos):
-    for produto in produtos:
-        atualizar_produto_no_tiny(produto)
+# Exemplo de endpoint para buscar anúncios do Mercado Livre
+@app.route("/anuncios/<id>", methods=["GET"])
+def buscar_anuncio_ml(id):
+    if "ml" not in tokens:
+        return "Erro: Não autenticado no Mercado Livre. Por favor, autentique-se em /ml/auth.", 401
+    headers = {"Authorization": f"Bearer {tokens['ml']}"}
+    response = requests.get(f"https://api.mercadolibre.com/items/{id}", headers=headers)
+    return jsonify(response.json())
 
-# Rota para atualizar produtos em massa
-@app.route('/atualizar_produtos_em_massa', methods=['POST'])
-def atualizar_produtos_em_massa():
-    if 'file' not in request.files:
-        return jsonify({"error": "Arquivo não enviado"}), 400
-
-    file = request.files['file']
-    produtos_df = pd.read_csv(file)
-    produtos = produtos_df.to_dict(orient='records')
-
-    lote_size = 500
-    lotes = [produtos[i:i + lote_size] for i in range(0, len(produtos), lote_size)]
-
-    for lote in lotes:
-        processar_lote_produtos.delay(lote)
-
-    return jsonify({"message": "Atualização em massa iniciada"}), 202
-
-# Rota para consultar produtos com pendências nos marketplaces
-@app.route('/produtos_pendentes_marketplaces', methods=['GET'])
-def produtos_pendentes_marketplaces():
-    url = "https://api.tiny.com.br/api2/produtos.pendencias_marketplaces"
-    params = {
-        "token": TINY_API_KEY,
-        "formato": "json"
-    }
-    response = requests.get(url, params=params)
-    data = response.json()
-
-    if "retorno" in data and "produtos" in data["retorno"]:
-        produtos_pendentes = data["retorno"]["produtos"]
-        return jsonify(produtos_pendentes), 200
-    else:
-        return jsonify({"message": "Nenhum produto com pendências encontrado"}), 404
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(debug=True)
