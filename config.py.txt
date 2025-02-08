@@ -1,5 +1,0 @@
-# -*- coding: utf-8 -*-
-# config.py
-TINY_API_KEY = "332226d25500bcca177fbfb7ad368c45c1ed9ca9"
-SQLALCHEMY_DATABASE_URI = 'sqlite:///produtos.db'
-SQLALCHEMY_TRACK_MODIFICATIONS = False
